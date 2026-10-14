@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'ui/intro_screen.dart';
 import 'ui/scan_screen.dart';
 
 void main() {
@@ -17,12 +18,12 @@ class HeroBmsApp extends StatelessWidget {
         );
 
     return MaterialApp(
-      title: 'Hero BMS',
+      title: 'HERO BMS',
       debugShowCheckedModeBanner: false,
       theme: theme(Brightness.light),
       darkTheme: theme(Brightness.dark),
       themeMode: ThemeMode.dark,
-      home: const ScanScreen(),
+      home: IntroScreen(next: (_) => const ScanScreen()),
     );
   }
 }

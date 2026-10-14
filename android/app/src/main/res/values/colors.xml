@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hero BMS navy; matches the splash screen and the app icon. -->
+    <color name="ic_launcher_background">#0F1C2B</color>
+    <color name="hero_navy">#0F1C2B</color>
+</resources>
