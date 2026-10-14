@@ -157,8 +157,8 @@ class _OverviewTab extends StatelessWidget {
             child: KvList([
               ('Remaining', '${d.remainingMah} mAh'),
               ('Full charge', d.fullChargeMah == 0 ? 'not learned' : '${d.fullChargeMah} mAh'),
-              if (charging) ('Time to full', fmtDuration(d.avgTimeToFullMin)),
-              if (!charging) ('Time to empty', fmtDuration(d.avgTimeToEmptyMin)),
+              ('Time to full', fmtDuration(d.avgTimeToFullMin)),
+              ('Time to empty', fmtDuration(d.avgTimeToEmptyMin)),
               ('Cycles', '${d.cycleCount}'),
               ('Health', '${d.sohPct}%'),
             ]),
@@ -372,14 +372,28 @@ class _StatusTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final registers = <(BitRegister, int)>[
-      (operationBits, d.operationStatus),
-      (batteryStatusBits, d.batteryStatus),
-      (chargingStatusBits, d.chargingStatus),
-      (gaugingStatusBits, d.gaugingStatus),
-      (mfgStatusBits, d.mfgStatus),
-      (safetyBits, d.safetyStatus),
-      (pfBits, d.pfStatus),
+    // Same groups, order and split as the web dashboard's Bit Registers tab.
+    // Battery Mode and LStatus ride in the slow DETAIL packet.
+    final x = c.detail;
+    final grids = [
+      if (x != null) BitGrid(title: 'Battery Mode', reg: batteryModeBits, value: x.batteryMode),
+      BitGrid(title: 'Battery Status', reg: batteryStatusBits, value: d.batteryStatus),
+      BitGrid(title: 'Operation Status A', reg: operationBits, value: d.operationStatus),
+      BitGrid(title: 'Operation Status B', reg: operationBits, value: d.operationStatus, from: 16),
+      BitGrid(title: 'Temp Range', reg: chargingStatusBits, value: d.chargingStatus, bytes: 1),
+      BitGrid(title: 'Charging Status', reg: chargingStatusBits, value: d.chargingStatus, from: 8),
+      BitGrid(title: 'Gauging Status', reg: gaugingStatusBits, value: d.gaugingStatus, bytes: 1),
+      BitGrid(title: 'IT Status', reg: gaugingStatusBits, value: d.gaugingStatus, from: 8),
+      BitGrid(title: 'Manufacturing Status', reg: mfgStatusBits, value: d.mfgStatus),
+      BitGrid(title: 'Safety Alert A+B', reg: safetyBits, value: d.safetyAlert),
+      BitGrid(title: 'Safety Status A+B', reg: safetyBits, value: d.safetyStatus),
+      BitGrid(title: 'Safety Alert C+D', reg: safetyBits, value: d.safetyAlert, from: 16),
+      BitGrid(title: 'Safety Status C+D', reg: safetyBits, value: d.safetyStatus, from: 16),
+      BitGrid(title: 'PF Alert A+B', reg: pfBits, value: d.pfAlert),
+      BitGrid(title: 'PF Status A+B', reg: pfBits, value: d.pfStatus),
+      BitGrid(title: 'PF Alert C+D', reg: pfBits, value: d.pfAlert, from: 16),
+      BitGrid(title: 'PF Status C+D', reg: pfBits, value: d.pfStatus, from: 16),
+      if (x != null) BitGrid(title: 'LStatus', reg: lStatusBits, value: x.lStatus, bytes: 1),
     ];
 
     return ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
@@ -395,11 +409,11 @@ class _StatusTab extends StatelessWidget {
           ('Max error', '${d.maxError}%'),
         ]),
       ),
-      SectionCard(
-        title: 'Registers',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final (reg, value) in registers) _RegisterRow(reg, value),
-        ]),
+      ...grids,
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+        child: Text('Red = bit set. Battery Mode and LStatus update every 30 s.',
+            style: TextStyle(fontSize: 12)),
       ),
       SectionCard(
         title: 'Monitor',
@@ -417,43 +431,6 @@ class _StatusTab extends StatelessWidget {
   static String _ago(DateTime t) {
     final s = DateTime.now().difference(t).inSeconds;
     return s < 2 ? 'just now' : '${s}s ago';
-  }
-}
-
-class _RegisterRow extends StatelessWidget {
-  const _RegisterRow(this.reg, this.value);
-  final BitRegister reg;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final set = reg.setBits(value);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(reg.title, style: t.textTheme.bodyMedium)),
-          Text(hex(value, reg.width ~/ 4),
-              style: t.textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
-        ]),
-        const SizedBox(height: 4),
-        set.isEmpty
-            ? Text('no bits set',
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant))
-            : Wrap(spacing: 4, runSpacing: 4, children: [
-                for (final n in set)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: t.colorScheme.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(n, style: t.textTheme.labelSmall),
-                  ),
-              ]),
-      ]),
-    );
   }
 }
 

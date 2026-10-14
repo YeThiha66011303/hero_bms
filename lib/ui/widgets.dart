@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../ble/bms_protocol.dart';
+
 /// Status colours used across the app.
 class BmsColors {
   static const ok = Color(0xFF2ECC71);
@@ -233,6 +235,75 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_RingPainter old) =>
       old.fraction != fraction || old.color != color || old.track != track;
+}
+
+/// BQStudio-style bit table, matching the web dashboard: one row per byte,
+/// high byte first, Bit7..Bit0 left to right. Red = set, green = clear,
+/// grey = reserved.
+///
+/// Draws [bytes] bytes of [reg] starting at bit [from], so one 32-bit
+/// register can be split into the A/B and C/D halves BQStudio shows.
+class BitGrid extends StatelessWidget {
+  const BitGrid({
+    super.key,
+    required this.title,
+    required this.reg,
+    required this.value,
+    this.from = 0,
+    this.bytes = 2,
+  });
+
+  final String title;
+  final BitRegister reg;
+  final int value;
+  final int from, bytes;
+
+  static const _set = Color(0xFFC0392B);
+  static const _clear = Color(0xFF1E8449);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final part = (value >> from) & ((1 << (bytes * 8)) - 1);
+    return SectionCard(
+      title: title,
+      trailing: Text(hex(part, bytes * 2),
+          style: t.textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
+      child: Column(children: [
+        for (var byte = bytes - 1; byte >= 0; byte--)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(children: [
+              for (var b = 7; b >= 0; b--) _cell(t, from + byte * 8 + b),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _cell(ThemeData t, int bit) {
+    final name = reg.names[bit];
+    final on = (value >> bit) & 1 == 1;
+    final bg = name == null ? t.colorScheme.surfaceContainerHighest : (on ? _set : _clear);
+    final fg = name == null ? t.colorScheme.outline : Colors.white;
+    return Expanded(
+      child: Container(
+        height: 30,
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        alignment: Alignment.center,
+        color: bg,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(name ?? 'RSVD',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: fg,
+                  fontWeight: on && name != null ? FontWeight.w700 : FontWeight.w400)),
+        ),
+      ),
+    );
+  }
 }
 
 String fmtDuration(int minutes) {

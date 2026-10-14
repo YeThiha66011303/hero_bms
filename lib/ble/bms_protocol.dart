@@ -406,6 +406,10 @@ const batteryModeBits = BitRegister('Battery Mode', 16, [
   'CC', 'PB', null, null, null, 'AM', 'CHGM', 'CAPM',
 ]);
 
+const lStatusBits = BitRegister('LStatus', 8, [
+  'CF0', 'CF1', 'ITEN', 'FIELD_QMAX', null, null, null, null,
+]);
+
 /// Plain-language meaning of the safety and PF flags shown as alarms.
 const flagDescriptions = <String, String>{
   'CUV': 'Cell undervoltage',
