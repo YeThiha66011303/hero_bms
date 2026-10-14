@@ -1,0 +1,36 @@
+# Builds an unsigned iOS .ipa on a GitHub macOS runner.
+# Download it from the run's Artifacts, then sign and install it from
+# Windows with Sideloadly (free Apple ID -> app expires after 7 days).
+name: iOS build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build (no code signing)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr hero_bms.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hero_bms-ipa
+          path: hero_bms.ipa
