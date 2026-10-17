@@ -16,6 +16,7 @@ class BmsUuids {
   static final info = _u(3);
   static final detail = _u(4);
   static final cmd = _u(5);
+  static final settings = _u(6);
 }
 
 /// Personal / hobby use. A for-profit product needs License.commercial from
@@ -35,11 +36,15 @@ class BmsConnection extends ChangeNotifier {
   LiveData? live;
   InfoData? info;
   DetailData? detail;
+  SettingsData? settings;
   DateTime? liveAt;
+
+  /// False on firmware older than the settings feature.
+  bool settingsSupported = false;
   String? error;
   bool _disposed = false;
 
-  BluetoothCharacteristic? _live, _info, _detail, _cmd;
+  BluetoothCharacteristic? _live, _info, _detail, _cmd, _settings;
   StreamSubscription<List<int>>? _liveSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _ticker;
@@ -71,6 +76,8 @@ class BmsConnection extends ChangeNotifier {
       _info = chr(BmsUuids.info);
       _detail = chr(BmsUuids.detail);
       _cmd = chr(BmsUuids.cmd);
+      _settings = svc.characteristics.where((c) => c.uuid == BmsUuids.settings).firstOrNull;
+      settingsSupported = _settings != null;
 
       _liveSub = _live!.onValueReceived.listen(_onLive);
       await _live!.setNotifyValue(true);
@@ -117,6 +124,47 @@ class BmsConnection extends ChangeNotifier {
     } catch (e) {
       error = _describe(e);
       _notify();
+    }
+  }
+
+  /// Reads the writable data flash settings. The firmware reads each one from
+  /// the gauge, so this takes a moment; it is only done on request.
+  Future<void> refreshSettings() async {
+    final c = _settings;
+    if (c == null) return;
+    try {
+      settings = SettingsData.parse(await c.read());
+      _notify();
+    } catch (e) {
+      error = _describe(e);
+      _notify();
+    }
+  }
+
+  /// Writes one data flash setting ([raw] in the gauge's own units) and reads
+  /// the settings back. The firmware range-checks it, writes it and verifies
+  /// it by reading it back. The first write triggers pairing.
+  Future<void> writeSetting(int id, int raw) async {
+    final c = _cmd;
+    if (c == null) throw StateError('not connected');
+    final v = raw & 0xFFFFFFFF;
+    try {
+      await c.write([0x02, id, v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF],
+          timeout: 60);
+    } on FlutterBluePlusException catch (e) {
+      throw Exception(switch (e.code) {
+        0x83 => 'The firmware does not allow changing this setting.',
+        0x84 => 'Value is outside the allowed range.',
+        0x85 => 'Value would cross its threshold or recovery partner.',
+        0x86 => 'The gauge is SEALED. Unseal it in BQStudio first.',
+        0x87 => 'The SMBus is busy. Try again.',
+        0x88 => 'SMBus error while writing. Nothing was verified.',
+        0x89 => 'Write did not verify: the gauge reads back a different value.',
+        5 || 15 => 'Pairing is required. Enter the PIN set in the firmware.',
+        _ => e.description ?? e.toString(),
+      });
+    } finally {
+      await refreshSettings();
     }
   }
 
@@ -190,7 +238,7 @@ class BmsConnection extends ChangeNotifier {
     _liveSub = null;
     await _connSub?.cancel();
     _connSub = null;
-    _live = _info = _detail = _cmd = null;
+    _live = _info = _detail = _cmd = _settings = null;
   }
 
   void _set(BmsLinkState s, {bool clearError = false}) {

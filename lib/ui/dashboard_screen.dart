@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../ble/bms_connection.dart';
 import '../ble/bms_protocol.dart';
+import 'settings_tab.dart';
 import 'widgets.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -36,17 +37,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context, _) {
         final live = c.live;
         return DefaultTabController(
-          length: 4,
+          length: 5,
           child: Scaffold(
             appBar: AppBar(
               title: Text(c.info?.deviceName.isNotEmpty == true ? c.info!.deviceName : c.name),
               actions: [_LinkBadge(c)],
-              bottom: const TabBar(tabs: [
-                Tab(text: 'Overview'),
-                Tab(text: 'Cells'),
-                Tab(text: 'Status'),
-                Tab(text: 'Details'),
-              ]),
+              bottom: const TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  Tab(text: 'Overview'),
+                  Tab(text: 'Cells'),
+                  Tab(text: 'Status'),
+                  Tab(text: 'Details'),
+                  Tab(text: 'Settings'),
+                ],
+              ),
             ),
             body: Column(children: [
               _Banner(c),
@@ -58,6 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         _CellsTab(live, c.info),
                         _StatusTab(live, c),
                         _DetailsTab(c),
+                        SettingsTab(c),
                       ]),
               ),
             ]),

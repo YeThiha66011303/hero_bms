@@ -343,6 +343,27 @@ class DetailData {
 }
 
 // =============================================================================
+// SETTINGS -- writable data flash values, read on demand (version 1)
+// =============================================================================
+class SettingsData {
+  SettingsData._(_Reader r) {
+    _checkVersion(r.u8(), 1, 'SETTINGS');
+    final count = r.u8();
+    for (var i = 0; i < count; i++) {
+      final id = r.u8();
+      final ok = r.u8() == 1;
+      final value = r.i32();
+      values[id] = ok ? value : null;
+    }
+  }
+
+  factory SettingsData.parse(List<int> bytes) => SettingsData._(_Reader(bytes));
+
+  /// Raw value by setting id; null when the firmware could not read it.
+  final Map<int, int?> values = {};
+}
+
+// =============================================================================
 // Bit names, indexed by bit number (TRM SLUUBT5C section 18). Null = reserved.
 // =============================================================================
 class BitRegister {
