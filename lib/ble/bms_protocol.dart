@@ -287,7 +287,8 @@ class DetailData {
     filtFullChargeMah = r.i16();
     filtFullChargeMwh = r.i16();
 
-    balanceTimeS = r.i16s(7);
+    // u16 on the gauge, sent as i16: without the mask 65007 s reads as -529.
+    balanceTimeS = [for (final v in r.i16s(7)) v & 0xFFFF];
     balanceDod = r.i16s(7);
     totalDodCharge = r.i16();
 

@@ -61,7 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ? const Center(child: CircularProgressIndicator())
                     : TabBarView(children: [
                         _OverviewTab(live),
-                        _CellsTab(live, c.info),
+                        _CellsTab(live, c.info, c.detail),
                         _StatusTab(live, c),
                         _DetailsTab(c),
                         SettingsTab(c),
@@ -259,9 +259,10 @@ class _AlarmCard extends StatelessWidget {
 // Cells
 // -----------------------------------------------------------------------------
 class _CellsTab extends StatelessWidget {
-  const _CellsTab(this.d, this.info);
+  const _CellsTab(this.d, this.info, this.x);
   final LiveData d;
   final InfoData? info;
+  final DetailData? x;
 
   @override
   Widget build(BuildContext context) {
@@ -306,6 +307,7 @@ class _CellsTab extends StatelessWidget {
             ),
         ]),
       ),
+      if (x != null) _BalanceCard(d, x!),
       SectionCard(
         title: 'Temperatures',
         child: KvList([
@@ -318,6 +320,36 @@ class _CellsTab extends StatelessWidget {
   static String _tempText(int dK) {
     final c = dKToC(dK);
     return c == null ? 'not fitted' : '${c.toStringAsFixed(1)} °C';
+  }
+}
+
+/// Per-cell balancing time still to run (CBStatus), refreshed every 30 s.
+/// The gauge bleeds the cells with time left; a cell at 0 is the reference.
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard(this.d, this.x);
+  final LiveData d;
+  final DetailData x;
+
+  @override
+  Widget build(BuildContext context) {
+    final times = x.balanceTimeS.take(d.cellCount).toList();
+    final active = times.any((s) => s > 0);
+    return SectionCard(
+      title: 'Balancing',
+      trailing: StateChip(d.balancing ? 'Bleeding now' : 'Idle', d.balancing,
+          onColor: BmsColors.cellLow),
+      child: active
+          ? KvList([
+              for (var i = 0; i < times.length; i++)
+                ('Cell ${i + 1}', times[i] == 0 ? '—' : _hms(times[i])),
+            ])
+          : const Text('No balancing time pending: the gauge sees the cells as matched.'),
+    );
+  }
+
+  static String _hms(int s) {
+    final h = s ~/ 3600, m = (s ~/ 60) % 60;
+    return h > 0 ? '${h}h ${m}m' : '${m}m ${s % 60}s';
   }
 }
 

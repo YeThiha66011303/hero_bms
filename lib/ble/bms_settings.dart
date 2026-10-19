@@ -4,7 +4,7 @@
 // firmware enforces all of it again; the copy here is so the app can explain a
 // limit before sending, not instead of the firmware checking.
 
-enum SettingKind { mv, ma, seconds, percent, tempK, bits }
+enum SettingKind { mv, ma, seconds, hours, secondsPerMah, percent, tempK, bits }
 
 class SettingDef {
   const SettingDef(
@@ -41,6 +41,8 @@ class SettingDef {
         SettingKind.mv => 'mV',
         SettingKind.ma => 'mA',
         SettingKind.seconds => 's',
+        SettingKind.hours => 'h',
+        SettingKind.secondsPerMah => 's/mAh',
         SettingKind.percent => '%',
         SettingKind.tempK => '°C',
         SettingKind.bits => '',
@@ -90,6 +92,16 @@ final settingDefs = <SettingDef>[
       help: 'How often the gauge recalculates balancing time while resting.'),
   const SettingDef(4, 'Cell balancing', 'Min RSOC for Balancing', SettingKind.percent, 0, 100,
       help: 'Balancing at rest only runs above this state of charge.'),
+  for (final (id, cells) in const [(5, 'Cell 1'), (6, 'Cell 2-6'), (7, 'Cell 7')])
+    SettingDef(id, 'Cell balancing', 'Bal Time/mAh $cells', SettingKind.secondsPerMah, 50, 5000,
+        help: 'Seconds of bypass per mAh to move. It follows from the balancing '
+            'resistor: only change it if the resistor changes.'),
+  const SettingDef(8, 'Cell balancing', 'Start RSOC for Bal in Sleep', SettingKind.percent, 0, 100,
+      partner: 9, order: 1, help: 'Balancing in sleep (CBS) starts above this charge.'),
+  const SettingDef(9, 'Cell balancing', 'End RSOC for Bal in Sleep', SettingKind.percent, 0, 100,
+      partner: 8, order: -1, help: 'Balancing in sleep stops below this charge.'),
+  const SettingDef(60, 'Cell balancing', 'Start Time for Bal in Sleep', SettingKind.hours, 0, 65520,
+      help: 'Hours in sleep before balancing in sleep may start.'),
 
   // ---- Cell undervoltage ----------------------------------------------------
   const SettingDef(10, 'Cell undervoltage', 'CUV Threshold', SettingKind.mv, 2000, 3000,
