@@ -164,8 +164,10 @@ class _OverviewTab extends StatelessWidget {
             child: KvList([
               ('Remaining', '${d.remainingMah} mAh'),
               ('Full charge', d.fullChargeMah == 0 ? 'not learned' : '${d.fullChargeMah} mAh'),
-              ('Time to full', fmtDuration(d.avgTimeToFullMin)),
-              ('Time to empty', fmtDuration(d.avgTimeToEmptyMin)),
+              // The gauge's estimates divide by the present current, so at a
+              // few mA they turn into days. Only show the one that applies.
+              ('Time to full', charging ? fmtDuration(d.avgTimeToFullMin) : '—'),
+              ('Time to empty', discharging ? fmtDuration(d.avgTimeToEmptyMin) : '—'),
               ('Cycles', '${d.cycleCount}'),
               ('Health', '${d.sohPct}%'),
             ]),

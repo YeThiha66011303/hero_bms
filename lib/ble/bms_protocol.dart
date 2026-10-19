@@ -171,8 +171,14 @@ class LiveData {
   bool get chargeDetected => (gaugingStatus >> 6) & 1 == 0;
   bool get relaxOcvTaken => (gaugingStatus >> 8) & 1 == 1;
 
+  /// What the pack is actually doing. The gauge's own mode is sticky: it only
+  /// leaves CHARGE once |current| < Quit Current (default 10 mA) for Chg Relax
+  /// Time (60 s), so a small offset or trickle keeps it "charging" with no
+  /// charger connected. Below 50 mA we call it idle and say so.
   String get gaugingState {
-    if (chargeDetected) return 'Charging';
+    if (chargeDetected) {
+      return currentMa > 50 ? 'Charging' : 'Idle (gauge in charge mode)';
+    }
     if (currentMa.abs() <= 50) return relaxOcvTaken ? 'Relax (OCV taken)' : 'Relax';
     return 'Discharging';
   }
