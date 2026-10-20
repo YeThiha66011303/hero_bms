@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../ble/bms_connection.dart';
 import '../ble/bms_protocol.dart';
 import '../ble/bms_settings.dart';
+import 'data_memory_screen.dart';
 import 'widgets.dart';
 
 /// Reads and writes the whitelisted data flash settings (firmware
@@ -63,14 +64,20 @@ class _SettingsTabState extends State<SettingsTab> {
                   style: TextStyle(color: BmsColors.bad)),
             ],
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
+            Wrap(spacing: 8, children: [
+              TextButton.icon(
                 onPressed: () => _copy(s),
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Copy current values'),
               ),
-            ),
+              if (c.dataMemorySupported)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => DataMemoryScreen(c))),
+                  icon: const Icon(Icons.list_alt, size: 18),
+                  label: const Text('All data memory'),
+                ),
+            ]),
           ]),
         ),
         for (final group in settingGroups)

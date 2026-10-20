@@ -17,6 +17,7 @@ class BmsUuids {
   static final detail = _u(4);
   static final cmd = _u(5);
   static final settings = _u(6);
+  static final dfRead = _u(7);
 }
 
 /// Personal / hobby use. A for-profit product needs License.commercial from
@@ -41,10 +42,13 @@ class BmsConnection extends ChangeNotifier {
 
   /// False on firmware older than the settings feature.
   bool settingsSupported = false;
+
+  /// False on firmware without whole-data-memory access (DFREAD).
+  bool dataMemorySupported = false;
   String? error;
   bool _disposed = false;
 
-  BluetoothCharacteristic? _live, _info, _detail, _cmd, _settings;
+  BluetoothCharacteristic? _live, _info, _detail, _cmd, _settings, _dfRead;
   StreamSubscription<List<int>>? _liveSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _ticker;
@@ -78,6 +82,8 @@ class BmsConnection extends ChangeNotifier {
       _cmd = chr(BmsUuids.cmd);
       _settings = svc.characteristics.where((c) => c.uuid == BmsUuids.settings).firstOrNull;
       settingsSupported = _settings != null;
+      _dfRead = svc.characteristics.where((c) => c.uuid == BmsUuids.dfRead).firstOrNull;
+      dataMemorySupported = _dfRead != null;
 
       _liveSub = _live!.onValueReceived.listen(_onLive);
       await _live!.setNotifyValue(true);
@@ -152,8 +158,49 @@ class BmsConnection extends ChangeNotifier {
       await c.write([0x02, id, v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF],
           timeout: 60);
     } on FlutterBluePlusException catch (e) {
-      throw Exception(switch (e.code) {
-        0x83 => 'The firmware does not allow changing this setting.',
+      throw Exception(_cmdError(e));
+    } finally {
+      await refreshSettings();
+    }
+  }
+
+  /// Raw data flash bytes, [len] at most 480. DFREAD is select-then-read, so
+  /// requests are queued: two screens must not interleave their selections.
+  Future<List<int>> readDataFlash(int addr, int len) {
+    final run = _dfQueue.then((_) async {
+      final c = _dfRead;
+      if (c == null) throw StateError('not connected');
+      await c.write([addr & 0xFF, addr >> 8, len & 0xFF, len >> 8]);
+      final r = await c.read();
+      if (r.length != 5 + len || r[0] != 1 || (r[1] | r[2] << 8) != addr) {
+        throw ProtocolException('DFREAD returned ${r.length} bytes for 0x${addr.toRadixString(16)}');
+      }
+      return r.sublist(5);
+    });
+    _dfQueue = run.catchError((_) => const <int>[]);
+    return run;
+  }
+
+  Future<void> _dfQueue = Future.value();
+
+  /// Writes one data flash parameter by address ([raw] as stored). The
+  /// firmware only accepts addresses in its generated catalog, checks TI's
+  /// limits (and the curated limits where they apply) and verifies the write.
+  Future<void> writeDataFlash(int addr, int raw) async {
+    final c = _cmd;
+    if (c == null) throw StateError('not connected');
+    final v = raw & 0xFFFFFFFF;
+    try {
+      await c.write([0x03, addr & 0xFF, addr >> 8, v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF,
+          (v >> 24) & 0xFF], timeout: 60);
+    } on FlutterBluePlusException catch (e) {
+      throw Exception(_cmdError(e));
+    }
+    if (settingsSupported) await refreshSettings();
+  }
+
+  static String _cmdError(FlutterBluePlusException e) => switch (e.code) {
+        0x83 => 'The firmware does not allow changing this parameter.',
         0x84 => 'Value is outside the allowed range.',
         0x85 => 'Value would cross its threshold or recovery partner.',
         0x86 => 'The gauge is SEALED. Unseal it in BQStudio first.',
@@ -162,11 +209,7 @@ class BmsConnection extends ChangeNotifier {
         0x89 => 'Write did not verify: the gauge reads back a different value.',
         5 || 15 => 'Pairing is required. Enter the PIN set in the firmware.',
         _ => e.description ?? e.toString(),
-      });
-    } finally {
-      await refreshSettings();
-    }
-  }
+      };
 
   /// Sends DeviceReset. [unsafe] must reflect what the user was warned about:
   /// the firmware only accepts CONFIRM-UNSAFE when a reset would clear FET_EN,
@@ -238,7 +281,7 @@ class BmsConnection extends ChangeNotifier {
     _liveSub = null;
     await _connSub?.cancel();
     _connSub = null;
-    _live = _info = _detail = _cmd = _settings = null;
+    _live = _info = _detail = _cmd = _settings = _dfRead = null;
   }
 
   void _set(BmsLinkState s, {bool clearError = false}) {
