@@ -48,4 +48,23 @@ void main() {
     final name = _byAddr(0x40E3); // S21 string
     expect(name.format([7, ...'bq40z80'.codeUnits, ...List.filled(14, 0)]), 'bq40z80');
   });
+
+  test('hex registers carry the TRM bit definitions', () {
+    final bal = _byAddr(0x4B8C); // Balancing Configuration
+    expect(bal.summary(0x25), 'CBS · CBR · CB');
+    final cb = bal.bits.firstWhere((b) => b.name == 'CB');
+    expect(cb.lo, 0);
+    expect(cb.withValue(0x25, 0), 0x24);
+
+    final fet = _byAddr(0x4AC7); // FET Options
+    final sleepChg = fet.bits.firstWhere((b) => b.name == 'SLEEPCHG');
+    expect(sleepChg.meaning(0), contains('off during sleep'));
+
+    final itExt = _byAddr(0x4BA1); // IT Gauging Ext: two-bit field
+    final ts = itExt.bits.firstWhere((b) => b.name == 'TS1/TS0');
+    expect(ts.width, 2);
+    expect(ts.meaning(0), contains('Max Temperature'));
+
+    expect(dfParams.where((p) => p.bits.isNotEmpty).length, 32);
+  });
 }

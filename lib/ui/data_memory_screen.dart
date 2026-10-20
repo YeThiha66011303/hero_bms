@@ -170,13 +170,30 @@ class _DataMemoryScreenState extends State<DataMemoryScreen> {
     final t = Theme.of(context);
     final raw = _raw(p);
     final value = raw == null ? '…' : '${p.format(raw)} ${p.displayUnit}'.trim();
-    final editable = p.writable && raw != null;
+    final current = raw == null ? null : p.decode(raw);
+    final hasBits = p.bits.isNotEmpty;
+    final summary = hasBits && current != null ? p.summary(current) : '';
+    // Bit registers open even when read only, so every flag can be looked up.
+    final VoidCallback? onTap = current == null
+        ? null
+        : hasBits
+            ? () => _editBits(p, current)
+            : p.writable
+                ? () => _edit(p, current)
+                : null;
     return InkWell(
-      onTap: editable ? () => _edit(p, p.decode(raw!)) : null,
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(children: [
-          Expanded(child: Text(p.name, style: t.textTheme.bodyMedium)),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p.name, style: t.textTheme.bodyMedium),
+              if (hasBits)
+                Text(summary.isEmpty ? 'no flags set' : summary,
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+            ]),
+          ),
           Flexible(
             child: Text(value,
                 textAlign: TextAlign.right,
@@ -184,7 +201,7 @@ class _DataMemoryScreenState extends State<DataMemoryScreen> {
                     ?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
           ),
           const SizedBox(width: 6),
-          Icon(p.writable ? Icons.edit : Icons.lock_outline,
+          Icon(p.writable ? Icons.edit : (hasBits ? Icons.info_outline : Icons.lock_outline),
               size: 16, color: t.colorScheme.onSurfaceVariant),
         ]),
       ),
@@ -196,6 +213,18 @@ class _DataMemoryScreenState extends State<DataMemoryScreen> {
       context: context,
       builder: (_) => _DfEditDialog(param: p, current: current),
     );
+    await _write(p, current, next);
+  }
+
+  Future<void> _editBits(DfParam p, int current) async {
+    final next = await showDialog<int>(
+      context: context,
+      builder: (_) => _DfBitsDialog(param: p, current: current),
+    );
+    await _write(p, current, next);
+  }
+
+  Future<void> _write(DfParam p, int current, int? next) async {
     if (next == null || next == current || !mounted) return;
 
     final ok = await showDialog<bool>(
@@ -203,7 +232,8 @@ class _DataMemoryScreenState extends State<DataMemoryScreen> {
       builder: (context) => AlertDialog(
         title: Text('Write ${p.name}?'),
         content: Text('${p.cls} / ${p.sub}\n'
-            '${p.formatRaw(current)} → ${p.formatRaw(next)} ${p.displayUnit}\n\n'
+            '${p.formatRaw(current)} → ${p.formatRaw(next)} ${p.displayUnit}\n'
+            '${p.bits.isEmpty ? '' : _bitChanges(p, current, next)}\n'
             'The gauge stores this in data flash and uses it immediately.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -291,6 +321,114 @@ class _DfEditDialogState extends State<_DfEditDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: _submit, child: const Text('Next')),
+      ],
+    );
+  }
+}
+
+/// "CBR on, CBS off" for the fields that differ between [from] and [to].
+String _bitChanges(DfParam p, int from, int to) => [
+      for (final b in p.bits)
+        if (!b.reserved && b.valueIn(from) != b.valueIn(to))
+          b.width == 1
+              ? '${b.name} ${b.valueIn(to) == 1 ? 'on' : 'off'}'
+              : '${b.name} = ${b.valueIn(to)}',
+    ].join(', ');
+
+/// One switch per flag (or a picker per multi-bit field), with the TRM's
+/// description and what the current setting means. Reserved bits are not
+/// shown and keep their value. Read-only registers open with everything
+/// disabled, as a reference.
+class _DfBitsDialog extends StatefulWidget {
+  const _DfBitsDialog({required this.param, required this.current});
+  final DfParam param;
+  final int current;
+
+  @override
+  State<_DfBitsDialog> createState() => _DfBitsDialogState();
+}
+
+class _DfBitsDialogState extends State<_DfBitsDialog> {
+  late int _value = widget.current;
+
+  bool get _isProtection => widget.param.name.startsWith('Enabled Protections');
+
+  Widget _meaning(ThemeData t, DfBit b) {
+    final m = b.meaning(b.valueIn(_value));
+    return Text(
+      [if (b.desc.isNotEmpty) b.desc, if (m != null) 'Now: $m'].join('\n'),
+      style: t.textTheme.bodySmall,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.param;
+    final t = Theme.of(context);
+    final editable = p.writable;
+    final turnedOff = [
+      for (final b in p.bits)
+        if (_isProtection && !b.reserved && b.valueIn(widget.current) == 1 && b.valueIn(_value) == 0)
+          b.name,
+    ];
+
+    return AlertDialog(
+      title: Text(p.name),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(shrinkWrap: true, children: [
+          Text(
+            '${p.cls} / ${p.sub} · 0x${p.addr.toRadixString(16).toUpperCase()} · ${p.formatRaw(_value)}',
+            style: t.textTheme.bodySmall,
+          ),
+          if (!editable)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text('Read only from the app. Change it in BQStudio.',
+                  style: TextStyle(color: BmsColors.warn)),
+            ),
+          for (final b in p.bits)
+            if (!b.reserved)
+              b.width == 1
+                  ? SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${b.name}  ·  bit ${b.lo}'),
+                      subtitle: _meaning(t, b),
+                      value: b.valueIn(_value) == 1,
+                      onChanged: editable
+                          ? (on) => setState(() => _value = b.withValue(_value, on ? 1 : 0))
+                          : null,
+                    )
+                  : ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${b.name}  ·  bits ${b.lo + b.width - 1}-${b.lo}'),
+                      subtitle: _meaning(t, b),
+                      trailing: DropdownButton<int>(
+                        value: b.valueIn(_value),
+                        items: [
+                          for (var v = 0; v < (1 << b.width); v++)
+                            DropdownMenuItem(value: v, child: Text('$v')),
+                        ],
+                        onChanged: editable
+                            ? (v) => setState(() => _value = b.withValue(_value, v ?? 0))
+                            : null,
+                      ),
+                    ),
+          if (turnedOff.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Turning off ${turnedOff.join(', ')} removes that protection.',
+                  style: const TextStyle(color: BmsColors.bad)),
+            ),
+        ]),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(editable ? 'Cancel' : 'Close'),
+        ),
+        if (editable)
+          FilledButton(onPressed: () => Navigator.pop(context, _value), child: const Text('Next')),
       ],
     );
   }
